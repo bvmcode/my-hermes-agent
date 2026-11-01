@@ -1,4 +1,4 @@
-# Hermes Agent on EC2
+# Hermes Agent on EC2 with Ollama
 
 Ubuntu 24.04 instance that runs [Hermes Agent](https://hermes-agent.nousresearch.com/) against [Ollama](https://ollama.com/)’s API. Ollama listens on `127.0.0.1:11434`. Hermes sends chat requests there. With a cloud model, Ollama forwards them and the weights stay off this machine.
 
