@@ -4,7 +4,7 @@ Ubuntu 24.04 instance that runs [Hermes Agent](https://hermes-agent.nousresearch
 
 First boot installs both, writes a dashboard username and password, and starts the dashboard on `0.0.0.0:9119`. Those credentials are not in Terraform state or user data. Shell access is SSM Session Manager. SSH is off unless you set `ssh_key_name` and `ssh_allowed_cidrs`. The root volume is encrypted gp3, and the instance requires IMDSv2.
 
-`t3.medium` (4 GB) is enough: Hermes, its browser tools, and the Ollama client. About 24 GB of RAM matters only if you pull a large model and run it on this instance.
+`t3.medium` (4 GB) is enough: Hermes, its browser tools, and the Ollama client. About 24 GB of RAM or more is needed if you pull a large model and run it on this instance.
 
 ## Deploy
 
