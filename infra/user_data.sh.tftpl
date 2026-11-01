@@ -1,0 +1,63 @@
+#!/bin/bash
+# First-boot install of Ollama and Hermes Agent for the "ubuntu" user.
+# Progress log: /var/log/hermes-install.log
+set -euxo pipefail
+exec > >(tee -a /var/log/hermes-install.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y curl git xz-utils openssl
+
+# Local model runtime. The official installer adds the systemd service
+# and starts it listening on 127.0.0.1:11434.
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Run the official installer as the ubuntu user (not root), skipping the
+# interactive setup wizard - you'll run `hermes setup` yourself after login.
+sudo -iu ubuntu bash -c 'curl -fsSL ${install_url} | bash -s -- --skip-setup'
+
+# Let the ubuntu user's systemd services (the Hermes gateway) keep running
+# when nobody is logged in.
+loginctl enable-linger ubuntu
+
+# A public bind refuses to start until a username and password exist.
+# Generated here so the login never enters Terraform state or user data.
+# Tracing is off while the password is written so it stays out of the log.
+install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.hermes
+env_file=/home/ubuntu/.hermes/.env
+touch "$env_file"
+set +x
+grep -q '^HERMES_DASHBOARD_BASIC_AUTH_USERNAME=' "$env_file" || echo 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME=admin' >> "$env_file"
+grep -q '^HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=' "$env_file" || openssl rand -hex 24 | awk '{print "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD="$1}' >> "$env_file"
+grep -q '^HERMES_DASHBOARD_BASIC_AUTH_SECRET=' "$env_file" || openssl rand -hex 32 | awk '{print "HERMES_DASHBOARD_BASIC_AUTH_SECRET="$1}' >> "$env_file"
+set -x
+chown ubuntu:ubuntu "$env_file"
+chmod 600 "$env_file"
+
+cat > /etc/systemd/system/hermes-dashboard.service <<EOF
+[Unit]
+Description=Hermes dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+Environment=HOME=/home/ubuntu
+Environment=USER=ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/home/ubuntu/.hermes/.env
+ExecStart=/home/ubuntu/.local/bin/hermes dashboard --tui --no-open --host 0.0.0.0 --port ${dashboard_port}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now hermes-dashboard.service
+
+touch /var/lib/hermes-install-done
+echo "Ollama and Hermes Agent install finished"

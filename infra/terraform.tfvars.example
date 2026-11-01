@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and adjust.
+region        = "us-east-1"
+instance_type = "t3.medium"
+
+# Who can open the dashboard. Default is anywhere; restrict to your IP:
+# dashboard_allowed_cidrs = ["203.0.113.4/32"]
+
+# Optional SSH access (otherwise use SSM Session Manager):
+# ssh_key_name      = "my-keypair"
+# ssh_allowed_cidrs = ["203.0.113.4/32"]
