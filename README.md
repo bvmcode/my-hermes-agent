@@ -1,10 +1,10 @@
 # Hermes Agent on EC2
 
-Ubuntu 24.04 instance that runs [Hermes Agent](https://hermes-agent.nousresearch.com/) with [Ollama](https://ollama.com/) as its model server. Models stay on the box: Ollama listens on `127.0.0.1:11434`, and Hermes uses that endpoint. No cloud LLM API key.
+Ubuntu 24.04 instance that runs [Hermes Agent](https://hermes-agent.nousresearch.com/) against [Ollama](https://ollama.com/)’s API. Ollama listens on `127.0.0.1:11434`. Hermes sends chat requests there. With a cloud model, Ollama forwards them and the weights stay off this machine.
 
 First boot installs both, writes a dashboard username and password, and starts the dashboard on `0.0.0.0:9119`. Those credentials are not in Terraform state or user data. Shell access is SSM Session Manager. SSH is off unless you set `ssh_key_name` and `ssh_allowed_cidrs`. The root volume is encrypted gp3, and the instance requires IMDSv2.
 
-`t3.medium` (4 GB RAM, 30 GB disk) is only enough to boot. Hermes needs a tool-calling model and about a 64k context; a model that can do that wants roughly 24 GB of RAM and extra disk for the weights. Set `instance_type` and `root_volume_size_gb` in `infra/terraform.tfvars` before apply. This stack is CPU-only, so replies are slow.
+`t3.medium` (4 GB) is enough: Hermes, its browser tools, and the Ollama client. About 24 GB of RAM matters only if you pull a large model and run it on this instance.
 
 ## Deploy
 
@@ -27,8 +27,6 @@ ollama launch hermes
 ```
 
 Ollama is already a systemd service, so it does not need `ollama serve`. `ollama launch hermes` picks a model, sets the provider to `http://127.0.0.1:11434/v1`, and can connect Telegram, Discord, Slack, WhatsApp, Signal, or email. Platform tokens are entered in that session. Change the model later with `hermes model`, or connect chat later with `hermes gateway setup`.
-
-Ollama's default context is 2048 tokens. If tool calls fail, raise it to at least 64000. See [Ollama's Hermes guide](https://docs.ollama.com/integrations/hermes) and [Hermes's local Ollama guide](https://hermes-agent.nousresearch.com/docs/guides/local-ollama-setup).
 
 ## Desktop
 

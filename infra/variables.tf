@@ -11,13 +11,13 @@ variable "name" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. t3.medium (4 GB) is enough to install Hermes and Ollama. A tool-calling model needs much more RAM; see the README."
+  description = "EC2 instance type. Hermes bundles Node.js and a headless Chromium for browser tools, so 4 GB RAM (t3.medium) is a sensible floor. More RAM is only needed if Ollama loads a model on this instance."
   type        = string
   default     = "t3.medium"
 }
 
 variable "root_volume_size_gb" {
-  description = "Root EBS volume size in GB. 30 GB holds the OS and a small model. Larger models need more."
+  description = "Root EBS volume size in GB."
   type        = number
   default     = 30
 }
