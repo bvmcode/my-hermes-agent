@@ -1,15 +1,14 @@
-# Hermes Agent on EC2 (Terraform)
+# Hermes Agent on EC2
 
-Provisions an Ubuntu 24.04 EC2 instance and installs Nous Research's Hermes Agent on first boot.
+Ubuntu 24.04 instance that runs [Hermes Agent](https://hermes-agent.nousresearch.com/) with [Ollama](https://ollama.com/) as its model server. Models stay on the box: Ollama listens on `127.0.0.1:11434`, and Hermes uses that endpoint. No cloud LLM API key.
 
-What you get:
-- t3.medium, 30 GB encrypted gp3 root volume, IMDSv2 enforced
-- Security group allows the Hermes dashboard (TCP 9119) from `dashboard_allowed_cidrs` (default: anywhere). Shell access stays on SSM Session Manager
-- Optional SSH (set `ssh_key_name` + `ssh_allowed_cidrs`)
-- Hermes installed for the `ubuntu` user via the official installer, with the setup wizard skipped
-- Dashboard starts on boot at `0.0.0.0:9119` with a username and password generated on the instance. Those credentials are not stored in Terraform
+First boot installs both, writes a dashboard username and password, and starts the dashboard on `0.0.0.0:9119`. Those credentials are not in Terraform state or user data. Shell access is SSM Session Manager. SSH is off unless you set `ssh_key_name` and `ssh_allowed_cidrs`. The root volume is encrypted gp3, and the instance requires IMDSv2.
+
+`t3.medium` (4 GB RAM, 30 GB disk) is only enough to boot. Hermes needs a tool-calling model and about a 64k context; a model that can do that wants roughly 24 GB of RAM and extra disk for the weights. Set `instance_type` and `root_volume_size_gb` in `infra/terraform.tfvars` before apply. This stack is CPU-only, so replies are slow.
 
 ## Deploy
+
+From `infra/`:
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # edit as needed
@@ -17,66 +16,40 @@ terraform init
 terraform apply
 ```
 
-The install runs in the background after boot and takes roughly 5–10 minutes.
+The install keeps running after apply, for about 5–10 minutes. Apply writes `infra/outputs.txt` (gitignored). `make login` reads `INSTANCE_ID` from it. From the repo root, `source infra/outputs.txt` exports the same values, including `dashboard_url`.
 
-Apply writes `infra/outputs.txt` (gitignored). That file exports `INSTANCE_ID`, and `make login` reads it from there. In a shell, `source infra/outputs.txt` sets the same variable.
-
-## Finish setup on the instance
+## Point Hermes at Ollama
 
 ```bash
-# connect as the ubuntu user
 make login
-
-# confirm the install finished
 ls /var/lib/hermes-install-done && tail /var/log/hermes-install.log
-
-# setup hermes model and gateway using ollama as provider
-ollama serve &
-hermes pm install --extra messaging
 ollama launch hermes
 ```
 
-Provider credentials are entered interactively so they never land in Terraform state or EC2 user data.
+Ollama is already a systemd service, so it does not need `ollama serve`. `ollama launch hermes` picks a model, sets the provider to `http://127.0.0.1:11434/v1`, and can connect Telegram, Discord, Slack, WhatsApp, Signal, or email. Platform tokens are entered in that session. Change the model later with `hermes model`, or connect chat later with `hermes gateway setup`.
 
-## Tear down
+Ollama's default context is 2048 tokens. If tool calls fail, raise it to at least 64000. See [Ollama's Hermes guide](https://docs.ollama.com/integrations/hermes) and [Hermes's local Ollama guide](https://hermes-agent.nousresearch.com/docs/guides/local-ollama-setup).
 
-```bash
-terraform destroy
-```
+## Desktop
 
-## Hermes Desktop
-
-Install the app on your computer from https://hermes-agent.nousresearch.com/desktop.
-
-Hermes will not listen on the public IP until a dashboard username and password are set. The session token in `~/.hermes/.env` is not that login, and model setup does not start this port. Set `dashboard_allowed_cidrs` to your own IP if you do not want port 9119 open to the internet.
-
-First boot writes the login and starts `hermes-dashboard`. From your computer:
+Install the app from https://hermes-agent.nousresearch.com/desktop. From the repo root:
 
 ```bash
 make dashboard-login
-```
-
-```bash
 source infra/outputs.txt
 ```
 
-The remote URL is `$dashboard_url` from that file.
+`make dashboard-login` prints the username and password from the instance. In the app, open Settings → Gateways → Remote gateway and enter `$dashboard_url`.
 
-In the app, open Settings → Gateways → Remote gateway and enter that URL. Sign-in appears once the dashboard answers. Sign in with the username and password from the command above.
+Port 9119 follows `dashboard_allowed_cidrs` (default: anywhere). Narrow that to your IP, or set it to `[]` once you use Tailscale.
 
 ## Tailscale
 
-One tailnet for your Mac, phone, and this agent. Create it at https://login.tailscale.com/start and sign in with the same account on each device. After all three are connected, they show up on the [Machines](https://login.tailscale.com/admin/machines) page.
+One tailnet for your Mac, phone, and this instance. Create it at https://login.tailscale.com/start and use the same account on each device.
 
-### Mac
+On your Mac, install Tailscale from https://tailscale.com/download/macos. On your phone, install it from the App Store or Google Play.
 
-Install Tailscale from https://tailscale.com/download/macos. Open it, allow the VPN configuration, and sign in.
-
-### Phone
-
-Install Tailscale from the App Store or Google Play. Allow the VPN configuration and sign in with the same account.
-
-### Agent
+On the instance:
 
 ```bash
 make login
@@ -84,11 +57,10 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up --hostname=hermes
 ```
 
-Open the login URL that command prints, on your Mac, and approve the machine. It reconnects on its own after a reboot.
+Open the login URL on your Mac and approve the machine. It reconnects after a reboot. `tailscale ip -4` prints its address. The dashboard is then `http://hermes:9119`. Use that URL as the remote gateway, then set `dashboard_allowed_cidrs = []` and apply again to close port 9119 on the public internet.
+
+## Tear down
 
 ```bash
-tailscale ip -4
-tailscale status
+cd infra && terraform destroy
 ```
-
-Your Mac and phone can then open the dashboard at `http://hermes:9119`. Use that URL as the remote gateway in Hermes Desktop. Tailscale reaches the instance on its own interface, so you can set `dashboard_allowed_cidrs` to `[]` and apply again to close port 9119 on the public internet.

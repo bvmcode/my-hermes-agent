@@ -20,7 +20,7 @@ login:
 		--document-name AWS-StartInteractiveCommand \
 		--parameters command="sudo -iu ubuntu"
 
-dash-creds:
+dashboard-login:
 	cmd_id=$$(aws ssm send-command --region $(AWS_REGION) --instance-ids $(INSTANCE_ID) \
 		--document-name AWS-RunShellScript --query Command.CommandId --output text \
 		--parameters 'commands=["sudo grep -E \"^HERMES_DASHBOARD_BASIC_AUTH_(USERNAME|PASSWORD)=\" /home/ubuntu/.hermes/.env"]'); \

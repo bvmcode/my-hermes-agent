@@ -1,5 +1,9 @@
 # Copy to terraform.tfvars and adjust.
 region        = "us-east-1"
+
+# t3.medium boots Hermes and Ollama. Tool-calling models want ~24 GB RAM
+# and extra disk for the weights. Examples: t3.xlarge, and
+# root_volume_size_gb = 80
 instance_type = "t3.medium"
 
 # Who can open the dashboard. Default is anywhere; restrict to your IP:
