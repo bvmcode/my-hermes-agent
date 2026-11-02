@@ -12,7 +12,8 @@ From `infra/`:
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # edit as needed
-terraform init
+cp backend.hcl.example backend.hcl             # bucket, key, region
+terraform init -backend-config=backend.hcl
 terraform apply
 ```
 

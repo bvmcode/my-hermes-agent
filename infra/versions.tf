@@ -12,11 +12,9 @@ terraform {
     }
   }
 
-  # Backend settings must be literals. Region is the bucket's region.
+  # bucket, key, and region come from backend.hcl. Backend blocks cannot
+  # reference variables. region there is the bucket's region.
   backend "s3" {
-    bucket  = "bvmcode-hermes-agent"
-    key     = "terraform/terraform.tfstate"
-    region  = "us-east-1"
     encrypt = true
   }
 }

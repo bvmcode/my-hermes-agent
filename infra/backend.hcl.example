@@ -1,0 +1,9 @@
+# Copy to backend.hcl and adjust, then:
+#   terraform init -backend-config=backend.hcl
+#
+# The S3 backend block cannot reference Terraform variables, so these are
+# passed as partial backend configuration. region is the bucket's region.
+
+bucket = "your_bucket"
+key    = "your_key"
+region = "us-east-1"
