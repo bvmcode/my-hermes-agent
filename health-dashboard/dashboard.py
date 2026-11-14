@@ -101,16 +101,11 @@ def api_meals(qdate):
         "SELECT meal_date, SUM(calories) cal, SUM(protein_g) protein, SUM(carbs_g) carbs "
         "FROM meals GROUP BY meal_date HAVING SUM(calories)>0 ORDER BY meal_date"
     )
-    def median(v):
-        s = sorted(v)
-        if not s:
-            return 0
-        return s[len(s)//2] if len(s) % 2 else (s[len(s)//2 - 1] + s[len(s)//2]) / 2
     last7 = days[-7:]
     l14 = days[-14:]
     stats = {
         "cal7avg": round(sum(d["cal"] for d in last7) / len(last7)) if last7 else None,
-        "cal14med": round(median([d["cal"] for d in l14])) if l14 else None,
+        "cal14min": round(min(d["cal"] for d in l14)) if l14 else None,
         "prot7avg": round(sum((d["protein"] or 0) for d in last7) / len(last7)) if last7 else None,
         "carbs7avg": round(sum((d["carbs"] or 0) for d in last7) / len(last7)) if last7 else None,
     }
@@ -274,25 +269,23 @@ async function loadOverview(){
   const gs=stats(gl.map(x=>x.glucose));
   if(gs)statline('st-glc',[
     `max <b>${Math.round(gs.max)}</b>`, `min <b>${Math.round(gs.min)}</b>`,
-    `median <b>${Math.round(gs.med)}</b>`,
     `trend <b>${gl[0].glucose} → ${gl[gl.length-1].glucose} (${gl[gl.length-1].glucose-gl[0].glucose>0?'+':''}${Math.round(gl[gl.length-1].glucose-gl[0].glucose)})</b>`]);
   const ws=stats(wt.map(x=>x.weight_lbs));
   if(ws)statline('st-wt',[
-    `max <b>${ws.max}</b> lbs`, `min <b>${ws.min}</b> lbs`, `median <b>${ws.med}</b> lbs`,
+    `max <b>${ws.max}</b> lbs`, `min <b>${ws.min}</b> lbs`,
     `trend <b>${wt[0].weight_lbs} → ${wt[wt.length-1].weight_lbs} (${(wt[wt.length-1].weight_lbs-wt[0].weight_lbs).toFixed(1)})</b>`]);
   const sysA=bp.map(x=>x.sys),diaA=bp.map(x=>x.dia);
   const s1=stats(sysA),s2=stats(diaA);
   if(s1&&s2)statline('st-bp',[
-    `SYS max <b>${s1.max}</b> · min <b>${s1.min}</b> · median <b>${Math.round(s1.med)}</b> · trend <b>${sysA[0]} → ${sysA[sysA.length-1]} (${sysA[sysA.length-1]-sysA[0]>0?'+':''}${sysA[sysA.length-1]-sysA[0]})</b>`,
-    `DIA max <b>${s2.max}</b> · min <b>${s2.min}</b> · median <b>${Math.round(s2.med)}</b> · trend <b>${diaA[0]} → ${diaA[diaA.length-1]} (${diaA[diaA.length-1]-diaA[0]>0?'+':''}${diaA[diaA.length-1]-diaA[0]})</b>`]);
+    `SYS max <b>${s1.max}</b> · min <b>${s1.min}</b> · trend <b>${sysA[0]} → ${sysA[sysA.length-1]} (${sysA[sysA.length-1]-sysA[0]>0?'+':''}${sysA[sysA.length-1]-sysA[0]})</b>`,
+    `DIA max <b>${s2.max}</b> · min <b>${s2.min}</b> · trend <b>${diaA[0]} → ${diaA[diaA.length-1]} (${diaA[diaA.length-1]-diaA[0]>0?'+':''}${diaA[diaA.length-1]-diaA[0]})</b>`]);
   const ca=days.map(x=>x.cal); const cs=stats(ca); let ctr='';
   if(ca.length>=8){
     const lt=ca.slice(-7),pt=ca.slice(-14,-7);
     const la=lt.reduce((a,b)=>a+b,0)/lt.length, pa=pt.reduce((a,b)=>a+b,0)/pt.length;
     ctr=`trend <b>7d avg ${Math.round(la)} vs prior ${Math.round(pa)} (${la-pa>0?'+':''}${Math.round(la-pa)})</b>`;
   }
-  if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`,
-    `median <b>${Math.round(cs.med)}</b>`, ctr]);
+  if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`, ctr]);
   // Optional: map drug-keywords to what they're for, shown on the Meds tab. Example:
   //   const PURPOSE={ibuprofen:'NSAID · pain, take with food'};
   const PURPOSE={};
@@ -316,7 +309,7 @@ async function loadFood(){
   document.getElementById('foodnote').textContent=`${t.rows} item${t.rows===1?'':'s'}`;
   document.getElementById('foodstats').innerHTML=(
     s.cal7avg!=null?`7-day avg <b>${s.cal7avg} cal</b>`:'')+
-    (s.cal14med!=null?` <span style="color:#4a5460">·</span> 14-day median <b>${s.cal14med} cal</b>`:'')+
+    (s.cal14min!=null?` <span style="color:#4a5460">·</span> 14-day min <b>${s.cal14min} cal</b>`:'')+
     (s.prot7avg!=null?` <span style="color:#4a5460">·</span> 7-day avg protein <b>${s.prot7avg}g</b>`:'')+
     (s.carbs7avg!=null?` <span style="color:#4a5460">·</span> 7-day avg carbs <b>${s.carbs7avg}g</b>`:'')+
     (s.cal7avg!=null&&t.rows?` <span style="color:#4a5460">·</span> vs 7-day avg: <b>${t.cal-s.cal7avg>0?'+':''}${Math.round(t.cal-s.cal7avg)} cal</b>`:'');
