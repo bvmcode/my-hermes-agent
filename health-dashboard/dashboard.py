@@ -267,25 +267,31 @@ async function loadOverview(){
     {type:'bar',label:'calories',data:days.map(x=>x.cal),backgroundColor:'#4ecdc455'},
     {type:'line',label:'carbs g',data:days.map(x=>x.carbs),borderColor:'#f4a261',pointRadius:2}]);
   const gs=stats(gl.map(x=>x.glucose));
+  const gm=gl.length?Math.round(gl.reduce((a,b)=>a+b.glucose,0)/gl.length):null;
   if(gs)statline('st-glc',[
     `max <b>${Math.round(gs.max)}</b>`, `min <b>${Math.round(gs.min)}</b>`,
+    `mean <b>${gm}</b>`,
     `trend <b>${gl[0].glucose} → ${gl[gl.length-1].glucose} (${gl[gl.length-1].glucose-gl[0].glucose>0?'+':''}${Math.round(gl[gl.length-1].glucose-gl[0].glucose)})</b>`]);
   const ws=stats(wt.map(x=>x.weight_lbs));
+  const wm=wt.length?(wt.reduce((a,b)=>a+b.weight_lbs,0)/wt.length).toFixed(1):null;
   if(ws)statline('st-wt',[
-    `max <b>${ws.max}</b> lbs`, `min <b>${ws.min}</b> lbs`,
+    `max <b>${ws.max}</b> lbs`, `min <b>${ws.min}</b> lbs`, `mean <b>${wm}</b> lbs`,
     `trend <b>${wt[0].weight_lbs} → ${wt[wt.length-1].weight_lbs} (${(wt[wt.length-1].weight_lbs-wt[0].weight_lbs).toFixed(1)})</b>`]);
   const sysA=bp.map(x=>x.sys),diaA=bp.map(x=>x.dia);
   const s1=stats(sysA),s2=stats(diaA);
+  const m1=sysA.length?Math.round(sysA.reduce((a,b)=>a+b,0)/sysA.length):null;
+  const m2=diaA.length?Math.round(diaA.reduce((a,b)=>a+b,0)/diaA.length):null;
   if(s1&&s2)statline('st-bp',[
-    `SYS max <b>${s1.max}</b> · min <b>${s1.min}</b> · trend <b>${sysA[0]} → ${sysA[sysA.length-1]} (${sysA[sysA.length-1]-sysA[0]>0?'+':''}${sysA[sysA.length-1]-sysA[0]})</b>`,
-    `DIA max <b>${s2.max}</b> · min <b>${s2.min}</b> · trend <b>${diaA[0]} → ${diaA[diaA.length-1]} (${diaA[diaA.length-1]-diaA[0]>0?'+':''}${diaA[diaA.length-1]-diaA[0]})</b>`]);
+    `SYS max <b>${s1.max}</b> · min <b>${s1.min}</b> · mean <b>${m1}</b> · trend <b>${sysA[0]} → ${sysA[sysA.length-1]} (${sysA[sysA.length-1]-sysA[0]>0?'+':''}${sysA[sysA.length-1]-sysA[0]})</b>`,
+    `DIA max <b>${s2.max}</b> · min <b>${s2.min}</b> · mean <b>${m2}</b> · trend <b>${diaA[0]} → ${diaA[diaA.length-1]} (${diaA[diaA.length-1]-diaA[0]>0?'+':''}${diaA[diaA.length-1]-diaA[0]})</b>`]);
   const ca=days.map(x=>x.cal); const cs=stats(ca); let ctr='';
+  const cm=ca.length?Math.round(ca.reduce((a,b)=>a+b,0)/ca.length):null;
   if(ca.length>=8){
     const lt=ca.slice(-7),pt=ca.slice(-14,-7);
     const la=lt.reduce((a,b)=>a+b,0)/lt.length, pa=pt.reduce((a,b)=>a+b,0)/pt.length;
     ctr=`trend <b>7d avg ${Math.round(la)} vs prior ${Math.round(pa)} (${la-pa>0?'+':''}${Math.round(la-pa)})</b>`;
   }
-  if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`, ctr]);
+  if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`, `mean <b>${cm}</b>`, ctr]);
   // Optional: map drug-keywords to what they're for, shown on the Meds tab. Example:
   //   const PURPOSE={ibuprofen:'NSAID · pain, take with food'};
   const PURPOSE={};
