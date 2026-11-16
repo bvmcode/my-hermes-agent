@@ -1,9 +1,5 @@
 #!/usr/bin/python3
-"""Health dashboard - tailnet-only web UI over a SQLite health ledger.
-
-Tabs: Overview (charts + stat bars) / Food (date-selectable log) / Meds.
-No frameworks, no build step: stdlib HTTP + Chart.js CDN.
-"""
+"""Barry's health dashboard - tailnet-only. Tabs: Overview / Food (date-selectable) / Meds."""
 import json
 import sqlite3
 import subprocess
@@ -15,10 +11,6 @@ from zoneinfo import ZoneInfo
 PORT = 8080
 DB = "/home/ubuntu/health_data/health.db"
 ET = ZoneInfo("America/New_York")
-
-# Set to the date of your first weekly injection (e.g. date(2026, 11, 7)) to show an
-# "on regimen day N" counter; leave as None to hide it entirely.
-MED_START = None
 
 
 def tailscale_ip():
@@ -46,6 +38,22 @@ def lbs(kg):
     return round(kg * 2.2046226218, 1) if kg is not None else None
 
 
+def streaks(dates):
+    from datetime import timedelta
+    ds = sorted(set(dates))
+    best = cur = 0
+    prev = None
+    for s in ds:
+        day = date.fromisoformat(s)
+        if prev is not None and (day - prev).days == 1:
+            cur += 1
+        else:
+            cur = 1
+        best = max(best, cur)
+        prev = day
+    return best, cur
+
+
 def api_data():
     readings = db_rows(
         "SELECT reading_date, glucose_mg_dl, systolic, diastolic, weight_kg "
@@ -68,12 +76,20 @@ def api_data():
     daily_meds = db_rows(
         "SELECT med_date, drug, dose_amount, schedule, notes FROM daily_meds ORDER BY drug"
     )
+    workouts = db_rows(
+        "SELECT workout_date, done_time, activity, duration_min, intensity, notes "
+        "FROM workouts ORDER BY workout_date DESC LIMIT 21"
+    )
+    wk_days = db_rows("SELECT DISTINCT workout_date FROM workouts ORDER BY workout_date")
+    wk_days = [w["workout_date"] for w in wk_days]
+    wk_total = db_rows("SELECT COALESCE(SUM(duration_min),0) m FROM workouts")[0]["m"]
+    best, cur = streaks(wk_days)
+    wk_stats = {"sessions": len(wk_days), "minutes": wk_total, "longest": best, "current": cur}
     today = datetime.now(ET).date()
-    regimen_day = (today - MED_START).days + 1 if MED_START else None
     return {
         "generated": datetime.now(ET).isoformat(timespec="seconds"),
         "et_date": today.isoformat(),
-        "regimen_day": regimen_day,
+        "mounjaro_day": (today - date(2026, 11, 7)).days + 1,
         "avg7_cal": round(sum(d["cal"] for d in last7) / len(last7)) if last7 else None,
         "readings": readings,
         "by_day": [
@@ -83,6 +99,8 @@ def api_data():
         ],
         "meds": meds,
         "daily_meds": daily_meds,
+        "workouts": workouts,
+        "workouts_stats": wk_stats,
     }
 
 
@@ -127,7 +145,7 @@ HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Health Dashboard</title>
+<title>Health — Barry Martin</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root{--bg:#0e1116;--card:#161b22;--line:#232a33;--txt:#e6edf3;--mut:#8b98a8;--acc:#4ecdc4}
@@ -164,12 +182,13 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </head>
 <body>
 <div class="wrap">
-<h1>Health Dashboard</h1>
+<h1>Health — Barry Martin</h1>
 <div class="sub" id="sub">loading…</div>
 <div class="tabs">
 <button class="tab on" id="tb-ov" onclick="show('ov')">Overview</button>
 <button class="tab" id="tb-food" onclick="show('food')">Food</button>
 <button class="tab" id="tb-meds" onclick="show('meds')">Meds</button>
+<button class="tab" id="tb-work" onclick="show('work')">Workouts</button>
 </div>
 
 <div class="tabpane on" id="pane-ov">
@@ -199,21 +218,32 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <div class="tabpane" id="pane-meds">
 <div class="grid">
 <div class="panel"><h2>Daily medications</h2><div id="dailymeds"></div></div>
-<div class="panel"><h2>Dose history</h2><ul id="meds" style="margin:0;padding-left:18px;font-size:14px"></ul></div>
+<div class="panel"><h2>Mounjaro doses</h2><ul id="meds" style="margin:0;padding-left:18px;font-size:14px"></ul></div>
 </div>
 </div>
 
-<footer>tailnet-only · overview + food (any date) + meds · source: health.db</footer>
+<div class="tabpane" id="pane-work">
+<div class="cards" id="wkcards"></div>
+<div class="grid">
+<div class="panel"><h2>Active minutes</h2><canvas id="wk"></canvas></div>
+<div class="panel wide"><h2>Workout history</h2>
+<table><thead><tr><th>Date</th><th>Time</th><th>Activity</th><th>Min</th><th>Notes</th></tr></thead>
+<tbody id="wkrows"></tbody></table></div>
+</div>
+</div>
+
+<footer>tailnet-only · overview + food (any date) + meds + workouts · source: health.db</footer>
 </div>
 <script>
 let charts={};
 function show(t){
-  ['ov','food','meds'].forEach(k=>{
+  ['ov','food','meds','work'].forEach(k=>{
     document.getElementById('pane-'+k).style.display=(k===t)?'block':'none';
     document.getElementById('tb-'+k).classList.toggle('on',k===t);
   });
   if(t==='ov'&&!charts.glc)loadOverview();
   if(t==='food')loadFood();
+  if(t==='work'&&!charts.wk)loadWorkouts();
 }
 function line(id,labels,sets,extra={}){
   if(charts[id])charts[id].destroy();
@@ -243,13 +273,13 @@ function statline(id,items){
 async function loadOverview(){
   const d=await (await fetch('api/data',{cache:'no-store'})).json();
   document.getElementById('sub').textContent=
-    `updated ${d.generated.replace('T',' ')} ET`+(d.regimen_day?` · on-regimen day ${d.regimen_day}`:' ');
+    `updated ${d.generated.replace('T',' ')} ET · Mounjaro day ${d.mounjaro_day}`;
   const r=d.readings,gl=r.filter(x=>x.glucose!=null),wt=r.filter(x=>x.weight_lbs!=null);
   const cards=
     [['Weight',wt.length?wt[wt.length-1].weight_lbs+' lbs':'—',wt.length?wt[wt.length-1].date:''],
      ['Fasting',gl.length?gl[gl.length-1].glucose:'—',gl.length?gl[gl.length-1].date:''],
-     ['Cal avg (7d)',d.avg7_cal!=null?d.avg7_cal:'—','per day']];
-  if(d.regimen_day)cards.push(['On regimen','day '+d.regimen_day,'weekly injections']);
+     ['Cal avg (7d)',d.avg7_cal!=null?d.avg7_cal:'—','per day'],
+     ['On Mounjaro','day '+d.mounjaro_day,'dose 1 · Nov 7']];
   document.getElementById('cards').innerHTML=cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
   const glL=gl.map(x=>x.date.slice(5));
@@ -297,20 +327,37 @@ async function loadOverview(){
     ctr=`trend <b>7d avg ${Math.round(la)} vs prior ${Math.round(pa)} (${la-pa>0?'+':''}${Math.round(la-pa)})</b>`;
   }
   if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`, `mean <b>${cm}</b>`, ctr]);
-  // Optional: map drug-keywords to what they're for, shown on the Meds tab. Example:
-  //   const PURPOSE={ibuprofen:'NSAID · pain, take with food'};
-  const PURPOSE={};
+  const PURPOSE={sertraline:'SSRI (Zoloft)',metformin:'Type-2 diabetes · glucose',valsartan:'Blood pressure (ARB)'};
   document.getElementById('dailymeds').innerHTML=d.daily_meds.length?
     ('<table style="font-size:14px"><thead><tr><th>Drug</th><th>Dose</th><th>Schedule</th><th>For</th></tr></thead><tbody>'
     +d.daily_meds.map(m=>{
       const key=Object.keys(PURPOSE).find(k=>m.drug&&m.drug.toLowerCase().includes(k))||'';
-      const since=(m.notes&&m.notes.includes('NEW'))?'recently started':'long-standing';
+      const since=(m.notes&&m.notes.includes('NEW'))?'started ~Nov 2':'long-standing';
       return `<tr><td><b>${m.drug}</b></td><td>${m.dose_amount||''}</td><td>${m.schedule||''}</td>
         <td>${PURPOSE[key]||''}<div style="color:#8b98a8;font-size:11px">${since}</div></td></tr>`;}).join('')
     +'</tbody></table><div style="color:#8b98a8;font-size:11px;margin-top:10px">Full notes &amp; Rx detail stay in the ledger — shown to nobody but you and your provider.</div>')
     :'<span style="color:#8b98a8">none recorded</span>';
   document.getElementById('meds').innerHTML=d.meds.map(m=>
     `<li><b>${m.drug}</b> — ${m.dose_date} ${(m.dose_time||'').slice(0,5)} ${m.notes?('· '+m.notes):''}</li>`).join('');
+}
+async function loadWorkouts(){
+  const d=await (await fetch('api/data',{cache:'no-store'})).json();
+  const s=d.workouts_stats;
+  document.getElementById('wkcards').innerHTML=[
+    ['Sessions',s.sessions,'since day 1'],
+    ['Total minutes',s.minutes,'all workouts'],
+    ['Longest streak',s.longest+' d','consecutive'],
+    ['Current streak',s.current+' d','consecutive']].map(c=>
+    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
+  const wk=d.workouts;
+  bar('wk',wk.map(x=>x.workout_date.slice(5)).reverse(),[
+    {type:'bar',label:'minutes',data:wk.map(x=>x.duration_min).reverse(),backgroundColor:'#3fb95055'}]);
+  document.getElementById('wkrows').innerHTML=wk.map(m=>{
+    const tm=(m.done_time||'').slice(0,5);
+    return `<tr><td>${m.workout_date.slice(5)}</td><td>${tm}</td><td>${m.activity}</td>
+      <td>${m.duration_min!=null?m.duration_min:''}</td>
+      <td style="color:#8b98a8;font-size:12px">${m.notes||''}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="color:#8b98a8">no workouts yet</td></tr>';
 }
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
