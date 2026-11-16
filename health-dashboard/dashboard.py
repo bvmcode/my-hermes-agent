@@ -253,8 +253,11 @@ async function loadOverview(){
   document.getElementById('cards').innerHTML=cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
   const glL=gl.map(x=>x.date.slice(5));
+  const doseSet=new Set(d.meds.filter(m=>/mounjaro|injection/i.test(m.drug||'')).map(m=>m.dose_date));
+  const glDoses=gl.map(x=>doseSet.has(x.date)?x.glucose:null);
   line('glc',glL,[{label:'fasting',data:gl.map(x=>x.glucose),borderColor:'#4ecdc4',backgroundColor:'#4ecdc433',fill:true},
-    {label:'130 target',data:glL.map(()=>130),borderColor:'#d2992288',borderDash:[6,6],pointRadius:0,borderWidth:1}]);
+    {label:'130 target',data:glL.map(()=>130),borderColor:'#d2992288',borderDash:[6,6],pointRadius:0,borderWidth:1},
+    {label:'injection day',data:glDoses,showLine:false,pointStyle:'rectRot',pointRadius:7,pointBorderWidth:2,pointBackgroundColor:'#9b5de5',borderColor:'#9b5de5'}]);
   line('wt',wt.map(x=>x.date.slice(5)),[{label:'lbs',data:wt.map(x=>x.weight_lbs),borderColor:'#9b5de5',backgroundColor:'#9b5de533',fill:true}],
     {ymin:Math.min(...wt.map(x=>x.weight_lbs))-3,ymax:Math.max(...wt.map(x=>x.weight_lbs))+3});
   const bp=r.filter(x=>x.sys!=null);
