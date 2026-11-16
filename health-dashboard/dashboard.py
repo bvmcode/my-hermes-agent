@@ -226,7 +226,8 @@ function line(id,labels,sets,extra={}){
 function bar(id,labels,sets){
   if(charts[id])charts[id].destroy();
   charts[id]=new Chart(document.getElementById(id),{data:{labels,datasets:sets},
-    options:{responsive:true,interaction:{mode:'index',intersect:false},scales:{y:{beginAtZero:true}},
+    options:{responsive:true,interaction:{mode:'index',intersect:false},
+      scales:{y:{beginAtZero:true},y1:{position:'right',beginAtZero:true,grid:{display:false}}},
       plugins:{legend:{labels:{color:'#8b98a8',boxWidth:10}}}}});
 }
 function etDate(d){return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'});}
@@ -265,8 +266,8 @@ async function loadOverview(){
     {ymin:60,ymax:185});
   const days=d.by_day.slice(-21);
   bar('cal',days.map(x=>x.meal_date.slice(5)),[
-    {type:'bar',label:'calories',data:days.map(x=>x.cal),backgroundColor:'#4ecdc455'},
-    {type:'line',label:'carbs g',data:days.map(x=>x.carbs),borderColor:'#f4a261',pointRadius:2}]);
+    {type:'bar',label:'calories',data:days.map(x=>x.cal),backgroundColor:'#4ecdc455',yAxisID:'y'},
+    {type:'line',label:'carbs g',data:days.map(x=>x.carbs),borderColor:'#f4a261',pointRadius:2,yAxisID:'y1'}]);
   const gs=stats(gl.map(x=>x.glucose));
   const gm=gl.length?Math.round(gl.reduce((a,b)=>a+b.glucose,0)/gl.length):null;
   if(gs)statline('st-glc',[
