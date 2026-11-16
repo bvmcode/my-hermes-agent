@@ -46,6 +46,22 @@ def lbs(kg):
     return round(kg * 2.2046226218, 1) if kg is not None else None
 
 
+def streaks(dates):
+    ds = sorted(set(dates))
+    best = cur = 0
+    prev = None
+    from datetime import timedelta
+    for s in ds:
+        day = date.fromisoformat(s)
+        if prev is not None and (day - prev).days == 1:
+            cur += 1
+        else:
+            cur = 1
+        best = max(best, cur)
+        prev = day
+    return best, cur
+
+
 def api_data():
     readings = db_rows(
         "SELECT reading_date, glucose_mg_dl, systolic, diastolic, weight_kg "
@@ -68,6 +84,15 @@ def api_data():
     daily_meds = db_rows(
         "SELECT med_date, drug, dose_amount, schedule, notes FROM daily_meds ORDER BY drug"
     )
+    workouts = db_rows(
+        "SELECT workout_date, done_time, activity, duration_min, intensity, notes "
+        "FROM workouts ORDER BY workout_date DESC LIMIT 21"
+    )
+    wk_days = db_rows("SELECT DISTINCT workout_date FROM workouts ORDER BY workout_date")
+    wk_days = [w["workout_date"] for w in wk_days]
+    wk_total = db_rows("SELECT COALESCE(SUM(duration_min),0) m FROM workouts")[0]["m"]
+    best, cur = streaks(wk_days)
+    wk_stats = {"sessions": len(wk_days), "minutes": wk_total, "longest": best, "current": cur}
     today = datetime.now(ET).date()
     regimen_day = (today - MED_START).days + 1 if MED_START else None
     return {
@@ -83,6 +108,8 @@ def api_data():
         ],
         "meds": meds,
         "daily_meds": daily_meds,
+        "workouts": workouts,
+        "workouts_stats": wk_stats,
     }
 
 
@@ -170,6 +197,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <button class="tab on" id="tb-ov" onclick="show('ov')">Overview</button>
 <button class="tab" id="tb-food" onclick="show('food')">Food</button>
 <button class="tab" id="tb-meds" onclick="show('meds')">Meds</button>
+<button class="tab" id="tb-work" onclick="show('work')">Workouts</button>
 </div>
 
 <div class="tabpane on" id="pane-ov">
@@ -203,17 +231,28 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </div>
 </div>
 
-<footer>tailnet-only · overview + food (any date) + meds · source: health.db</footer>
+<div class="tabpane" id="pane-work">
+<div class="cards" id="wkcards"></div>
+<div class="grid">
+<div class="panel"><h2>Active minutes</h2><canvas id="wk"></canvas></div>
+<div class="panel wide"><h2>Workout history</h2>
+<table><thead><tr><th>Date</th><th>Time</th><th>Activity</th><th>Min</th><th>Notes</th></tr></thead>
+<tbody id="wkrows"></tbody></table></div>
+</div>
+</div>
+
+<footer>tailnet-only · overview + food (any date) + meds + workouts · source: health.db</footer>
 </div>
 <script>
 let charts={};
 function show(t){
-  ['ov','food','meds'].forEach(k=>{
+  ['ov','food','meds','work'].forEach(k=>{
     document.getElementById('pane-'+k).style.display=(k===t)?'block':'none';
     document.getElementById('tb-'+k).classList.toggle('on',k===t);
   });
   if(t==='ov'&&!charts.glc)loadOverview();
   if(t==='food')loadFood();
+  if(t==='work'&&!charts.wk)loadWorkouts();
 }
 function line(id,labels,sets,extra={}){
   if(charts[id])charts[id].destroy();
@@ -226,9 +265,11 @@ function line(id,labels,sets,extra={}){
 function bar(id,labels,sets){
   if(charts[id])charts[id].destroy();
   charts[id]=new Chart(document.getElementById(id),{data:{labels,datasets:sets},
-    options:{responsive:true,interaction:{mode:'index',intersect:false},scales:{y:{beginAtZero:true}},
+    options:{responsive:true,interaction:{mode:'index',intersect:false},
+      scales:{y:{beginAtZero:true},y1:{position:'right',beginAtZero:true,grid:{display:false}}},
       plugins:{legend:{labels:{color:'#8b98a8',boxWidth:10}}}}});
 }
+function etDate(d){return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'});}
 function stats(a){
   const s=a.filter(x=>x!=null).sort((p,q)=>p-q);
   if(!s.length)return null;
@@ -251,8 +292,11 @@ async function loadOverview(){
   document.getElementById('cards').innerHTML=cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
   const glL=gl.map(x=>x.date.slice(5));
+  const doseSet=new Set(d.meds.map(m=>m.dose_date));
+  const glDoses=gl.map(x=>doseSet.has(x.date)?x.glucose:null);
   line('glc',glL,[{label:'fasting',data:gl.map(x=>x.glucose),borderColor:'#4ecdc4',backgroundColor:'#4ecdc433',fill:true},
-    {label:'130 target',data:glL.map(()=>130),borderColor:'#d2992288',borderDash:[6,6],pointRadius:0,borderWidth:1}]);
+    {label:'130 target',data:glL.map(()=>130),borderColor:'#d2992288',borderDash:[6,6],pointRadius:0,borderWidth:1},
+    {label:'injection day',data:glDoses,showLine:false,pointStyle:'rectRot',pointRadius:7,pointBorderWidth:2,pointBackgroundColor:'#9b5de5',borderColor:'#9b5de5'}]);
   line('wt',wt.map(x=>x.date.slice(5)),[{label:'lbs',data:wt.map(x=>x.weight_lbs),borderColor:'#9b5de5',backgroundColor:'#9b5de533',fill:true}],
     {ymin:Math.min(...wt.map(x=>x.weight_lbs))-3,ymax:Math.max(...wt.map(x=>x.weight_lbs))+3});
   const bp=r.filter(x=>x.sys!=null);
@@ -264,8 +308,8 @@ async function loadOverview(){
     {ymin:60,ymax:185});
   const days=d.by_day.slice(-21);
   bar('cal',days.map(x=>x.meal_date.slice(5)),[
-    {type:'bar',label:'calories',data:days.map(x=>x.cal),backgroundColor:'#4ecdc455'},
-    {type:'line',label:'carbs g',data:days.map(x=>x.carbs),borderColor:'#f4a261',pointRadius:2}]);
+    {type:'bar',label:'calories',data:days.map(x=>x.cal),backgroundColor:'#4ecdc455',yAxisID:'y'},
+    {type:'line',label:'carbs g',data:days.map(x=>x.carbs),borderColor:'#f4a261',pointRadius:2,yAxisID:'y1'}]);
   const gs=stats(gl.map(x=>x.glucose));
   const gm=gl.length?Math.round(gl.reduce((a,b)=>a+b.glucose,0)/gl.length):null;
   if(gs)statline('st-glc',[
@@ -307,6 +351,25 @@ async function loadOverview(){
   document.getElementById('meds').innerHTML=d.meds.map(m=>
     `<li><b>${m.drug}</b> — ${m.dose_date} ${(m.dose_time||'').slice(0,5)} ${m.notes?('· '+m.notes):''}</li>`).join('');
 }
+async function loadWorkouts(){
+  const d=await (await fetch('api/data',{cache:'no-store'})).json();
+  const s=d.workouts_stats;
+  document.getElementById('wkcards').innerHTML=[
+    ['Sessions',s.sessions,'since day 1'],
+    ['Total minutes',s.minutes,'all workouts'],
+    ['Longest streak',s.longest+' d','consecutive'],
+    ['Current streak',s.current+' d','consecutive']].map(c=>
+    `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
+  const wk=d.workouts;
+  bar('wk',wk.map(x=>x.workout_date.slice(5)).reverse(),[
+    {type:'bar',label:'minutes',data:wk.map(x=>x.duration_min).reverse(),backgroundColor:'#3fb95055'}]);
+  document.getElementById('wkrows').innerHTML=wk.map(m=>{
+    const tm=(m.done_time||'').slice(0,5);
+    return `<tr><td>${m.workout_date.slice(5)}</td><td>${tm}</td><td>${m.activity}</td>
+      <td>${m.duration_min!=null?m.duration_min:''}</td>
+      <td style="color:#8b98a8;font-size:12px">${m.notes||''}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="color:#8b98a8">no workouts yet</td></tr>';
+}
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
   if(!q)return;
@@ -333,12 +396,12 @@ async function loadFood(){
 }
 function shiftDay(n){
   const el=document.getElementById('fooddate');
-  const v=el.value||new Date().toISOString().slice(0,10);
+  const v=el.value||etDate(new Date());
   const dt=new Date(v+'T12:00:00'); dt.setDate(dt.getDate()+n);
-  el.value=dt.toISOString().slice(0,10);
+  el.value=etDate(dt);
   loadFood();
 }
-document.getElementById('fooddate').value=new Date().toISOString().slice(0,10);
+document.getElementById('fooddate').value=etDate(new Date());
 show('ov');
 loadOverview();
 loadFood();

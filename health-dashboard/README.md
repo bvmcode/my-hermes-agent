@@ -19,6 +19,8 @@ production: no names, no medication names, no dates. See *Personalization* below
   the selected day compares to the 7-day average.
 - **Meds** — standing daily medications (Drug / Dose / Schedule / optional "For") and
   the dose history from the `medications` table.
+- **Workouts** — sessions/total-minutes/longest-streak/current-streak cards, an
+  active-minutes bar chart, and the workout history table.
 
 ## Files
 
@@ -72,7 +74,7 @@ health-dashboard/
 | Path | Purpose |
 |---|---|
 | `/` | the single-page UI |
-| `/api/data` | readings, per-day meal totals, daily meds, dose history |
+| `/api/data` | readings, per-day meal totals, daily meds, dose history, workouts |
 | `/api/meals?date=YYYY-MM-DD` | one day's meal rows + totals + rolling stats |
 | `/_health` | reachability probe (`{"ok":true}`) |
 
@@ -83,6 +85,8 @@ health-dashboard/
 - `medications(dose_date, dose_time, drug, dose_amount, notes)` — dose history
 - `daily_meds(med_date, drug, dose_amount, schedule, notes)` — standing regimen;
   a note containing `NEW` renders as "recently started", otherwise "long-standing"
+- `workouts(workout_date, done_time, activity, duration_min, intensity, notes)` —
+  workout log powering the Workouts tab
 
 ## Personalization (deliberately omitted here)
 
