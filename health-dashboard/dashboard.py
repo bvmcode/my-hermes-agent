@@ -229,6 +229,7 @@ function bar(id,labels,sets){
     options:{responsive:true,interaction:{mode:'index',intersect:false},scales:{y:{beginAtZero:true}},
       plugins:{legend:{labels:{color:'#8b98a8',boxWidth:10}}}}});
 }
+function etDate(d){return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'});}
 function stats(a){
   const s=a.filter(x=>x!=null).sort((p,q)=>p-q);
   if(!s.length)return null;
@@ -333,12 +334,12 @@ async function loadFood(){
 }
 function shiftDay(n){
   const el=document.getElementById('fooddate');
-  const v=el.value||new Date().toISOString().slice(0,10);
+  const v=el.value||etDate(new Date());
   const dt=new Date(v+'T12:00:00'); dt.setDate(dt.getDate()+n);
-  el.value=dt.toISOString().slice(0,10);
+  el.value=etDate(dt);
   loadFood();
 }
-document.getElementById('fooddate').value=new Date().toISOString().slice(0,10);
+document.getElementById('fooddate').value=etDate(new Date());
 show('ov');
 loadOverview();
 loadFood();
