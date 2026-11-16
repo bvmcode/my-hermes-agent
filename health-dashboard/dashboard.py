@@ -1,5 +1,9 @@
 #!/usr/bin/python3
-"""Barry's health dashboard - tailnet-only. Tabs: Overview / Food (date-selectable) / Meds."""
+"""Health dashboard - tailnet-only web UI over a SQLite health ledger.
+
+Tabs: Overview (charts + stat bars) / Food (date-selectable log) / Meds.
+No frameworks, no build step: stdlib HTTP + Chart.js CDN.
+"""
 import json
 import sqlite3
 import subprocess
@@ -11,6 +15,10 @@ from zoneinfo import ZoneInfo
 PORT = 8080
 DB = "/home/ubuntu/health_data/health.db"
 ET = ZoneInfo("America/New_York")
+
+# Set to the date of your first weekly injection (e.g. date(2026, 11, 7)) to show an
+# "on regimen day N" counter; leave as None to hide it entirely.
+MED_START = None
 
 
 def tailscale_ip():
@@ -39,10 +47,10 @@ def lbs(kg):
 
 
 def streaks(dates):
-    from datetime import timedelta
     ds = sorted(set(dates))
     best = cur = 0
     prev = None
+    from datetime import timedelta
     for s in ds:
         day = date.fromisoformat(s)
         if prev is not None and (day - prev).days == 1:
@@ -86,10 +94,11 @@ def api_data():
     best, cur = streaks(wk_days)
     wk_stats = {"sessions": len(wk_days), "minutes": wk_total, "longest": best, "current": cur}
     today = datetime.now(ET).date()
+    regimen_day = (today - MED_START).days + 1 if MED_START else None
     return {
         "generated": datetime.now(ET).isoformat(timespec="seconds"),
         "et_date": today.isoformat(),
-        "mounjaro_day": (today - date(2026, 11, 7)).days + 1,
+        "regimen_day": regimen_day,
         "avg7_cal": round(sum(d["cal"] for d in last7) / len(last7)) if last7 else None,
         "readings": readings,
         "by_day": [
@@ -145,7 +154,7 @@ HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Health — Barry Martin</title>
+<title>Health Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root{--bg:#0e1116;--card:#161b22;--line:#232a33;--txt:#e6edf3;--mut:#8b98a8;--acc:#4ecdc4}
@@ -182,7 +191,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </head>
 <body>
 <div class="wrap">
-<h1>Health — Barry Martin</h1>
+<h1>Health Dashboard</h1>
 <div class="sub" id="sub">loading…</div>
 <div class="tabs">
 <button class="tab on" id="tb-ov" onclick="show('ov')">Overview</button>
@@ -218,7 +227,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <div class="tabpane" id="pane-meds">
 <div class="grid">
 <div class="panel"><h2>Daily medications</h2><div id="dailymeds"></div></div>
-<div class="panel"><h2>Mounjaro doses</h2><ul id="meds" style="margin:0;padding-left:18px;font-size:14px"></ul></div>
+<div class="panel"><h2>Dose history</h2><ul id="meds" style="margin:0;padding-left:18px;font-size:14px"></ul></div>
 </div>
 </div>
 
@@ -273,17 +282,17 @@ function statline(id,items){
 async function loadOverview(){
   const d=await (await fetch('api/data',{cache:'no-store'})).json();
   document.getElementById('sub').textContent=
-    `updated ${d.generated.replace('T',' ')} ET · Mounjaro day ${d.mounjaro_day}`;
+    `updated ${d.generated.replace('T',' ')} ET`+(d.regimen_day?` · on-regimen day ${d.regimen_day}`:' ');
   const r=d.readings,gl=r.filter(x=>x.glucose!=null),wt=r.filter(x=>x.weight_lbs!=null);
   const cards=
     [['Weight',wt.length?wt[wt.length-1].weight_lbs+' lbs':'—',wt.length?wt[wt.length-1].date:''],
      ['Fasting',gl.length?gl[gl.length-1].glucose:'—',gl.length?gl[gl.length-1].date:''],
-     ['Cal avg (7d)',d.avg7_cal!=null?d.avg7_cal:'—','per day'],
-     ['On Mounjaro','day '+d.mounjaro_day,'dose 1 · Nov 7']];
+     ['Cal avg (7d)',d.avg7_cal!=null?d.avg7_cal:'—','per day']];
+  if(d.regimen_day)cards.push(['On regimen','day '+d.regimen_day,'weekly injections']);
   document.getElementById('cards').innerHTML=cards.map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
   const glL=gl.map(x=>x.date.slice(5));
-  const doseSet=new Set(d.meds.filter(m=>/mounjaro|injection/i.test(m.drug||'')).map(m=>m.dose_date));
+  const doseSet=new Set(d.meds.map(m=>m.dose_date));
   const glDoses=gl.map(x=>doseSet.has(x.date)?x.glucose:null);
   line('glc',glL,[{label:'fasting',data:gl.map(x=>x.glucose),borderColor:'#4ecdc4',backgroundColor:'#4ecdc433',fill:true},
     {label:'130 target',data:glL.map(()=>130),borderColor:'#d2992288',borderDash:[6,6],pointRadius:0,borderWidth:1},
@@ -327,12 +336,14 @@ async function loadOverview(){
     ctr=`trend <b>7d avg ${Math.round(la)} vs prior ${Math.round(pa)} (${la-pa>0?'+':''}${Math.round(la-pa)})</b>`;
   }
   if(cs)statline('st-cal',[`max <b>${Math.round(cs.max)}</b>`, `min <b>${Math.round(cs.min)}</b>`, `mean <b>${cm}</b>`, ctr]);
-  const PURPOSE={sertraline:'SSRI (Zoloft)',metformin:'Type-2 diabetes · glucose',valsartan:'Blood pressure (ARB)'};
+  // Optional: map drug-keywords to what they're for, shown on the Meds tab. Example:
+  //   const PURPOSE={ibuprofen:'NSAID · pain, take with food'};
+  const PURPOSE={};
   document.getElementById('dailymeds').innerHTML=d.daily_meds.length?
     ('<table style="font-size:14px"><thead><tr><th>Drug</th><th>Dose</th><th>Schedule</th><th>For</th></tr></thead><tbody>'
     +d.daily_meds.map(m=>{
       const key=Object.keys(PURPOSE).find(k=>m.drug&&m.drug.toLowerCase().includes(k))||'';
-      const since=(m.notes&&m.notes.includes('NEW'))?'started ~Nov 2':'long-standing';
+      const since=(m.notes&&m.notes.includes('NEW'))?'recently started':'long-standing';
       return `<tr><td><b>${m.drug}</b></td><td>${m.dose_amount||''}</td><td>${m.schedule||''}</td>
         <td>${PURPOSE[key]||''}<div style="color:#8b98a8;font-size:11px">${since}</div></td></tr>`;}).join('')
     +'</tbody></table><div style="color:#8b98a8;font-size:11px;margin-top:10px">Full notes &amp; Rx detail stay in the ledger — shown to nobody but you and your provider.</div>')
