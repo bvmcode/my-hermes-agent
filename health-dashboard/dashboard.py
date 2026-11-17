@@ -62,6 +62,26 @@ def streaks(dates):
     return best, cur
 
 
+import re
+
+
+def kcal_est(activity, duration_min, weight_kg, done_date):
+    """(MET - 1) x RMR-per-minute (Mifflin-St Jeor). METs: walk 3.0 mph = 3.5, jog = JOG_METS."""
+    if duration_min is None:
+        return None
+    m = re.search(r"(\d+)\s*min[^\d]*(jog)", activity or "", re.I)
+    jog_min = int(m.group(1)) if m else 0
+    walk_min = max(int(duration_min) - jog_min, 0)
+    w = weight_kg or 124.1
+    if SEX and HEIGHT_IN and BIRTHDAY:
+        cm = HEIGHT_IN * 2.54
+        age = int((done_date - BIRTHDAY).days // 365.25)
+        rmr = 10 * w + 6.25 * cm - 5 * age + (5 if SEX == "m" else -161)
+        per_min = rmr / 1440.0
+        return round(((3.5 - 1) * walk_min + (JOG_METS - 1) * jog_min) * per_min)
+    return round((3.5 * walk_min + JOG_METS * jog_min) * w / 60.0 * 0.9)
+
+
 def api_data():
     readings = db_rows(
         "SELECT reading_date, glucose_mg_dl, systolic, diastolic, weight_kg "
@@ -92,7 +112,21 @@ def api_data():
     wk_days = [w["workout_date"] for w in wk_days]
     wk_total = db_rows("SELECT COALESCE(SUM(duration_min),0) m FROM workouts")[0]["m"]
     best, cur = streaks(wk_days)
-    wk_stats = {"sessions": len(wk_days), "minutes": wk_total, "longest": best, "current": cur}
+    wts = db_rows(
+        "SELECT reading_date, weight_kg FROM daily_readings "
+        "WHERE weight_kg IS NOT NULL ORDER BY reading_date"
+    )
+    kcal_total = 0
+    for x in workouts:
+        wd = x["workout_date"]
+        wk_w = next((w["weight_kg"] for w in reversed(wts) if w["reading_date"] <= wd), wts[0]["weight_kg"] if wts else None)
+        x["weight_lbs_at"] = lbs(wk_w)
+        x["kcal"] = kcal_est(x["activity"], x["duration_min"], wk_w, date.fromisoformat(wd))
+        kcal_total += x["kcal"] or 0
+    wk_stats = {
+        "sessions": len(wk_days), "minutes": wk_total, "longest": best, "current": cur,
+        "kcal": kcal_total,
+    }
     today = datetime.now(ET).date()
     regimen_day = (today - MED_START).days + 1 if MED_START else None
     return {
@@ -236,7 +270,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <div class="grid">
 <div class="panel"><h2>Active minutes</h2><canvas id="wk"></canvas></div>
 <div class="panel wide"><h2>Workout history</h2>
-<table><thead><tr><th>Date</th><th>Time</th><th>Activity</th><th>Min</th><th>Notes</th></tr></thead>
+<table><thead><tr><th>Date</th><th>Time</th><th>Activity</th><th>Min</th><th>Burn</th><th>Notes</th></tr></thead>
 <tbody id="wkrows"></tbody></table></div>
 </div>
 </div>
@@ -357,6 +391,7 @@ async function loadWorkouts(){
   document.getElementById('wkcards').innerHTML=[
     ['Sessions',s.sessions,'since day 1'],
     ['Total minutes',s.minutes,'all workouts'],
+    ['Calories burned',s.kcal!=null?s.kcal:'—','estimated'],
     ['Longest streak',s.longest+' d','consecutive'],
     ['Current streak',s.current+' d','consecutive']].map(c=>
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
@@ -367,8 +402,9 @@ async function loadWorkouts(){
     const tm=(m.done_time||'').slice(0,5);
     return `<tr><td>${m.workout_date.slice(5)}</td><td>${tm}</td><td>${m.activity}</td>
       <td>${m.duration_min!=null?m.duration_min:''}</td>
+      <td><b>${m.kcal!=null?m.kcal:'—'}</b></td>
       <td style="color:#8b98a8;font-size:12px">${m.notes||''}</td></tr>`;
-  }).join('')||'<tr><td colspan="5" style="color:#8b98a8">no workouts yet</td></tr>';
+  }).join('')||'<tr><td colspan="6" style="color:#8b98a8">no workouts yet</td></tr>';
 }
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
