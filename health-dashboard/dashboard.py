@@ -211,6 +211,13 @@ h1{font-size:20px;margin:0 0 2px}.sub{color:var(--mut);font-size:13px;margin-bot
 .panel h2{font-size:14px;margin:0 0 10px;color:var(--mut);font-weight:600}
 .statline{display:flex;flex-wrap:wrap;gap:14px;color:var(--mut);font-size:12px;margin-top:8px}
 .statline b{color:var(--txt);font-weight:600}
+.kan{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.kcol{flex:1;min-width:210px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.kcol h3{font-size:12px;color:var(--mut);margin:0 0 8px;text-transform:uppercase;letter-spacing:.4px}
+.kcard{background:#1c2430;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px}
+.kcard b{display:block;margin-bottom:2px}
+.kcard .d{color:var(--mut);font-size:12px}
+.kcol.kdone .kcard{opacity:.7}
 .panel.wide{grid-column:1/-1;overflow:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{color:var(--mut);text-align:left;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
@@ -280,9 +287,8 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </div>
 
 <div class="tabpane" id="pane-notes">
-<div class="panel wide"><h2>Staged notes (future work — mark done via chat)</h2>
-<table><thead><tr><th>Date</th><th>Topic</th><th>Note</th><th>Status</th></tr></thead>
-<tbody id="notesrows"></tbody></table></div>
+<div class="kan" id="kan"></div>
+<div style="color:#8b98a8;font-size:12px">Cards move by voice: tell me "move X to in-progress / done" and the board updates. Read-only by design — the ledger stays the single writer.</div>
 </div>
 
 <footer>tailnet-only · overview + food (any date) + meds + workouts + notes · source: health.db</footer>
@@ -419,10 +425,20 @@ async function loadWorkouts(){
 }
 async function loadNotes(){
   const d=await (await fetch('api/data',{cache:'no-store'})).json();
-  document.getElementById('notesrows').innerHTML=d.notes.map(n=>
-    `<tr><td>${n.note_date.slice(5)}</td><td><b>${n.topic}</b></td><td>${n.body}</td>
-     <td><span class="tag">${n.status}</span></td></tr>`).join('')||
-   '<tr><td colspan="4" style="color:#8b98a8">no staged notes</td></tr>';
+  const cols=[
+    {key:'open',  title:'Staged',      match:x=>x.status==='open'},
+    {key:'active',title:'In progress', match:x=>x.status==='active'},
+    {key:'done',  title:'Done',        match:x=>x.status==='done' && !x.body.includes('CANCELLED')},
+    {key:'done2', title:'Closed',      match:x=>x.status==='done' &&  x.body.includes('CANCELLED')}];
+  document.getElementById('kan').innerHTML=cols.map(c=>{
+    const items=d.notes.filter(c.match);
+    return `<div class="kcol ${c.key==='done'||c.key==='done2'?'kdone':''}">
+      <h3>${c.title} (${items.length})</h3>
+      ${items.map(n=>`<div class="kcard"><b>${n.topic}</b>
+        <div class="d">${n.note_date.slice(5)}</div>
+        <div style="margin-top:4px">${n.body.length>180?n.body.slice(0,180)+'…':n.body}</div></div>`).join('')
+        ||`<div class="d" style="color:#8b98a8;font-size:12px">—</div>`}
+    </div>`;}).join('');
 }
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
