@@ -144,6 +144,9 @@ def api_data():
         "daily_meds": daily_meds,
         "workouts": workouts,
         "workouts_stats": wk_stats,
+        "notes": db_rows(
+            "SELECT note_date, topic, body, status FROM notes ORDER BY id"
+        ),
     }
 
 
@@ -232,6 +235,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <button class="tab" id="tb-food" onclick="show('food')">Food</button>
 <button class="tab" id="tb-meds" onclick="show('meds')">Meds</button>
 <button class="tab" id="tb-work" onclick="show('work')">Workouts</button>
+<button class="tab" id="tb-notes" onclick="show('notes')">Notes</button>
 </div>
 
 <div class="tabpane on" id="pane-ov">
@@ -275,18 +279,25 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </div>
 </div>
 
-<footer>tailnet-only · overview + food (any date) + meds + workouts · source: health.db</footer>
+<div class="tabpane" id="pane-notes">
+<div class="panel wide"><h2>Staged notes (future work — mark done via chat)</h2>
+<table><thead><tr><th>Date</th><th>Topic</th><th>Note</th><th>Status</th></tr></thead>
+<tbody id="notesrows"></tbody></table></div>
+</div>
+
+<footer>tailnet-only · overview + food (any date) + meds + workouts + notes · source: health.db</footer>
 </div>
 <script>
 let charts={};
 function show(t){
-  ['ov','food','meds','work'].forEach(k=>{
+  ['ov','food','meds','work','notes'].forEach(k=>{
     document.getElementById('pane-'+k).style.display=(k===t)?'block':'none';
     document.getElementById('tb-'+k).classList.toggle('on',k===t);
   });
   if(t==='ov'&&!charts.glc)loadOverview();
   if(t==='food')loadFood();
   if(t==='work'&&!charts.wk)loadWorkouts();
+  if(t==='notes')loadNotes();
 }
 function line(id,labels,sets,extra={}){
   if(charts[id])charts[id].destroy();
@@ -405,6 +416,13 @@ async function loadWorkouts(){
       <td><b>${m.kcal!=null?m.kcal:'—'}</b></td>
       <td style="color:#8b98a8;font-size:12px">${m.notes||''}</td></tr>`;
   }).join('')||'<tr><td colspan="6" style="color:#8b98a8">no workouts yet</td></tr>';
+}
+async function loadNotes(){
+  const d=await (await fetch('api/data',{cache:'no-store'})).json();
+  document.getElementById('notesrows').innerHTML=d.notes.map(n=>
+    `<tr><td>${n.note_date.slice(5)}</td><td><b>${n.topic}</b></td><td>${n.body}</td>
+     <td><span class="tag">${n.status}</span></td></tr>`).join('')||
+   '<tr><td colspan="4" style="color:#8b98a8">no staged notes</td></tr>';
 }
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
