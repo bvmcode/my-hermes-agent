@@ -145,7 +145,7 @@ def api_data():
         "workouts": workouts,
         "workouts_stats": wk_stats,
         "notes": db_rows(
-            "SELECT note_date, topic, body, status FROM notes ORDER BY id"
+            "SELECT id, note_date, topic, body, status FROM notes ORDER BY id"
         ),
     }
 
@@ -438,7 +438,7 @@ async function loadNotes(){
     const items=d.notes.filter(c.match);
     return `<div class="kcol ${c.key==='done'||c.key==='done2'?'kdone':''}">
       <h3>${c.title} (${items.length})</h3>
-      ${items.map(n=>`<div class="kcard"><b>${n.topic}</b>
+      ${items.map(n=>`<div class="kcard"><span class="tag">${n.id}</span> <b>${n.topic}</b>
         <div class="d">${n.note_date.slice(5)}</div>
         <div style="margin-top:4px">${n.body.length>180?n.body.slice(0,180)+'…':n.body}</div></div>`).join('')
         ||`<div class="d" style="color:#8b98a8;font-size:12px">—</div>`}
