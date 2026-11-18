@@ -284,6 +284,7 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <div class="cards" id="wkcards"></div>
 <div class="grid">
 <div class="panel"><h2>Active minutes</h2><canvas id="wk"></canvas></div>
+<div class="panel"><h2>Calories burned (est.)</h2><canvas id="wkb"></canvas></div>
 <div class="panel wide"><h2>Workout history</h2>
 <table><thead><tr><th>Date</th><th>Time</th><th>Activity</th><th>Min</th><th>Burn</th><th>Notes</th></tr></thead>
 <tbody id="wkrows"></tbody></table></div>
@@ -418,7 +419,9 @@ async function loadWorkouts(){
     `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="d">${c[2]}</div></div>`).join('');
   const wk=d.workouts;
   bar('wk',wk.map(x=>x.workout_date.slice(5)).reverse(),[
-    {type:'bar',label:'minutes',data:wk.map(x=>x.duration_min).reverse(),backgroundColor:'#3fb95055'}]);
+  {type:'bar',label:'minutes',data:wk.map(x=>x.duration_min).reverse(),backgroundColor:'#3fb95055'}]);
+  bar('wkb',wk.map(x=>x.workout_date.slice(5)).reverse(),[
+  {type:'bar',label:'kcal burned (est.)',data:wk.map(x=>x.kcal).reverse(),backgroundColor:'#f4a26155'}]);
   document.getElementById('wkrows').innerHTML=wk.map(m=>{
     const tm=(m.done_time||'').slice(0,5);
     return `<tr><td>${m.workout_date.slice(5)}</td><td>${tm}</td><td>${m.activity}</td>
