@@ -288,7 +288,14 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 
 <div class="tabpane" id="pane-notes">
 <div class="kan" id="kan"></div>
-<div style="color:#8b98a8;font-size:12px">Cards move by voice: tell me "move X to in-progress / done" and the board updates. Read-only by design — the ledger stays the single writer.</div>
+<div style="color:#8b98a8;font-size:12px;margin-bottom:10px">Cards move by voice: tell me "move X to in-progress / done" and the board updates. Read-only by design — the ledger stays the single writer.</div>
+<div style="background:#161b22;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:14px">
+  <b>To add or move a note:</b> open the Telegram chat for this bot. Two link forms are wired in this build:
+  <code>tg://resolve?domain=&lt;bot-username&gt;</code> (deep-links the installed app on phone/desktop)
+  and <code>https://t.me/&lt;bot-username&gt;</code> (universal fallback — app, or web if no app).
+  The username is resolved from the gateway config at deploy time; placeholders in the
+  sanitized copy are replaced by the running deployment.
+</div>
 </div>
 
 <footer>tailnet-only · overview + food (any date) + meds + workouts + notes · source: health.db</footer>
