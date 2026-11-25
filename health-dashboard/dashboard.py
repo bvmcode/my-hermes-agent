@@ -145,7 +145,7 @@ def api_data():
         "workouts": workouts,
         "workouts_stats": wk_stats,
         "notes": db_rows(
-            "SELECT id, note_date, topic, body, status FROM notes ORDER BY id"
+            "SELECT id, note_date, topic, body, status FROM notes WHERE 0"
         ),
     }
 
@@ -246,7 +246,6 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 <button class="tab" id="tb-food" onclick="show('food')">Food</button>
 <button class="tab" id="tb-meds" onclick="show('meds')">Meds</button>
 <button class="tab" id="tb-work" onclick="show('work')">Workouts</button>
-<button class="tab" id="tb-notes" onclick="show('notes')">Notes</button>
 </div>
 
 <div class="tabpane on" id="pane-ov">
@@ -290,24 +289,18 @@ footer{color:var(--mut);font-size:11px;margin-top:22px;text-align:center}
 </div>
 </div>
 
-<div class="tabpane" id="pane-notes">
-<div class="kan" id="kan"></div>
-<div style="color:#8b98a8;font-size:12px;margin-bottom:10px">Cards move by voice — open Telegram from the banner up top and just ask. Read-only by design — the ledger stays the single writer.</div>
-</div>
-
-<footer>tailnet-only · overview + food (any date) + meds + workouts + notes · source: health.db</footer>
+<footer>tailnet-only · overview + food (any date) + meds + workouts · notes &amp; checklists live at <a href="http://100.100.57.105:8081" style="color:#4ecdc4">:8081</a> · source: health.db</footer>
 </div>
 <script>
 let charts={};
 function show(t){
-  ['ov','food','meds','work','notes'].forEach(k=>{
+  ['ov','food','meds','work'].forEach(k=>{
     document.getElementById('pane-'+k).style.display=(k===t)?'block':'none';
     document.getElementById('tb-'+k).classList.toggle('on',k===t);
   });
   if(t==='ov'&&!charts.glc)loadOverview();
   if(t==='food')loadFood();
   if(t==='work'&&!charts.wk)loadWorkouts();
-  if(t==='notes')loadNotes();
 }
 function line(id,labels,sets,extra={}){
   if(charts[id])charts[id].destroy();
@@ -427,23 +420,6 @@ async function loadWorkouts(){
       <td><b>${m.kcal!=null?m.kcal:'—'}</b></td>
       <td style="color:#8b98a8;font-size:12px">${m.notes||''}</td></tr>`;
   }).join('')||'<tr><td colspan="6" style="color:#8b98a8">no workouts yet</td></tr>';
-}
-async function loadNotes(){
-  const d=await (await fetch('api/data',{cache:'no-store'})).json();
-  const cols=[
-    {key:'open',  title:'Staged',      match:x=>x.status==='open'},
-    {key:'active',title:'In progress', match:x=>x.status==='active'},
-    {key:'done',  title:'Done',        match:x=>x.status==='done' && !x.body.includes('CANCELLED')},
-    {key:'done2', title:'Closed',      match:x=>x.status==='done' &&  x.body.includes('CANCELLED')}];
-  document.getElementById('kan').innerHTML=cols.map(c=>{
-    const items=d.notes.filter(c.match);
-    return `<div class="kcol ${c.key==='done'||c.key==='done2'?'kdone':''}">
-      <h3>${c.title} (${items.length})</h3>
-      ${items.map(n=>`<div class="kcard"><span class="tag">${n.id}</span> <b>${n.topic}</b>
-        <div class="d">${n.note_date.slice(5)}</div>
-        <div style="margin-top:4px">${n.body.length>180?n.body.slice(0,180)+'…':n.body}</div></div>`).join('')
-        ||`<div class="d" style="color:#8b98a8;font-size:12px">—</div>`}
-    </div>`;}).join('');
 }
 async function loadFood(){
   const q=document.getElementById('fooddate').value;
