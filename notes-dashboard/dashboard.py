@@ -22,6 +22,17 @@ def db_rows(q, *params):
     con.close()
     return rows
 
+def db_write_check(id_, done):
+    con = sqlite3.connect(DB_PATH)
+    try:
+        import subprocess as sp
+        now = sp.check_output(["date", "+%F %H:%M:%S"], env={**os.environ, "TZ": "America/New_York"}, text=True).strip() if done else None
+        cur = con.execute("UPDATE checklists SET done=?, done_at=? WHERE id=?", (1 if done else 0, now, id_))
+        con.commit()
+        return cur.rowcount
+    finally:
+        con.close()
+
 STATUS_ORDER = {"open": 0, "active": 1, "done": 2, "closed": 3}
 
 def api_notes():
@@ -165,11 +176,17 @@ async function loadChecklist(){
     +`<div class="card"><div class="n">${s.open}</div><div class="l">open</div></div>`
     +`<div class="card"><div class="n">${s.done}</div><div class="l">checked off</div></div>`;
   document.getElementById('chklist').innerHTML=rows.map(r=>
-    `<li class="chk ${r.done?'done':''}"><div class="box"></div><div>`
+    `<li class="chk ${r.done?'done':''}"><div class="box" style="cursor:pointer" onclick="toggleChk(${r.id}, ${r.done?'false':'true'})"></div><div>`
     +`<div class="title">${esc(r.title)}</div>`
     +`${r.note?`<div class="note">${esc(r.note)}</div>`:''}`
     +`<div class="date">added ${esc(r.created_date)}${r.done_at?' · checked '+esc(r.done_at.split(' ')[0]):''} · [${r.id}]</div>`
     +`</div></li>`).join('')||'<li style="color:#8b98a8">empty — say "add checklist item: …" in Telegram</li>';
+}
+async function toggleChk(id, done){
+  const r=await fetch('api/checklist/check',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id:id,done:done})});
+  if(!r.ok){ alert('check failed'); return; }
+  await loadChecklist();
 }
 show('notes');
 </script></body></html>"""
@@ -205,6 +222,33 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(api_checklist())
             elif path == "api/checklist-stats":
                 self._json(api_checklist_stats())
+            else:
+                self.send_response(404)
+                self.end_headers()
+        except Exception as e:
+            self._json({"error": str(e)[:200]})
+
+    def _body_json(self):
+        n = int(self.headers.get("Content-Length", 0))
+        try:
+            import json as _j
+            return _j.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return {}
+
+    def do_POST(self):
+        path = self.path.split("?")[0].strip("/")
+        try:
+            if path == "api/checklist/check":
+                b = self._body_json()
+                id_ = b.get("id")
+                done = b.get("done")
+                if not isinstance(id_, int) or not isinstance(done, bool):
+                    self._json({"error": "need integer id + boolean done"})
+                    return
+                # hard limit: only the checklist table's done/done_at fields are writable
+                n = db_write_check(id_, done)
+                self._json({"ok": n == 1, "id": id_, "done": done})
             else:
                 self.send_response(404)
                 self.end_headers()
