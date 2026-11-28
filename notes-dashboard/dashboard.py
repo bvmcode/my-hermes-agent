@@ -128,6 +128,7 @@ footer a{color:#4ecdc4;text-decoration:none}
 <div style="color:#8b98a8;font-size:12px;margin-top:8px">Cards move by voice — open Telegram from the banner and just ask.</div></div>
 
 <div class="tabpane" id="pane-checklist">
+<div style="color:#58a6ff;font-size:12px;margin-bottom:10px;background:#1f6feb22;border:1px solid #1f6feb;border-radius:6px;padding:6px 10px;display:inline-block">Dependent — any incomplete task moves to the next day until checked off.</div>
 <div class="cards" id="chkcards"></div>
 <ul class="nlist" id="chklist"></ul></div>
 
@@ -179,7 +180,7 @@ async function loadChecklist(){
     `<li class="chk ${r.done?'done':''}"><div class="box" style="cursor:pointer" onclick="toggleChk(${r.id}, ${r.done?'false':'true'})"></div><div>`
     +`<div class="title">${esc(r.title)}</div>`
     +`${r.note?`<div class="note">${esc(r.note)}</div>`:''}`
-    +`<div class="date">added ${esc(r.created_date)}${r.done_at?' · checked '+esc(r.done_at.split(' ')[0]):''} · [${r.id}]</div>`
+    +`<div class="date">${r.done?`done ${esc((r.done_at||r.created_date).split(' ')[0])}`:`dependent — carried to next day · since ${esc(r.created_date)}`} · [${r.id}]</div>`
     +`</div></li>`).join('')||'<li style="color:#8b98a8">empty — say "add checklist item: …" in Telegram</li>';
 }
 async function toggleChk(id, done){
