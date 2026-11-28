@@ -1,0 +1,10 @@
+[Unit]
+Description=Notes & Checklists dashboard (tailnet-only, port 8081)
+
+[Service]
+ExecStart=/usr/bin/python3 /home/ubuntu/notes_dashboard/dashboard.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

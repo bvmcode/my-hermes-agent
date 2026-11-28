@@ -19,8 +19,18 @@ production: no names, no medication names, no dates. See *Personalization* below
   the selected day compares to the 7-day average.
 - **Meds** — standing daily medications (Drug / Dose / Schedule / optional "For") and
   the dose history from the `medications` table.
-- **Workouts** — sessions/total-minutes/longest-streak/current-streak cards, an
-  active-minutes bar chart, and the workout history table.
+- **Notes** — a staged to-do list of future work (read-only here; items are added
+  and marked done through the chat/ledger path, keeping the dashboard write-free)
+- **Workouts** — sessions / total-minutes / **estimated calories burned** /
+  longest-streak / current-streak cards, an active-minutes bar chart, and the
+  workout history table with a per-session burn estimate.
+
+  Burn method: walking at 3.0 mph = 3.5 METs (Compendium of Physical Activities),
+  short jogs estimated at ~6.0 METs; calories = (METs − 1) × resting metabolic rate
+  per minute, with RMR from Mifflin-St Jeor (10·kg + 6.25·cm − 5·age + 5, male) using
+  the body weight on file closest to each workout. Personalized mode needs
+  `SEX`, `HEIGHT_IN`, and `BIRTHDAY` set at the top of `dashboard.py`; with those
+  `None` it falls back to METs × current weight only.
 
 ## Files
 
@@ -87,6 +97,8 @@ health-dashboard/
   a note containing `NEW` renders as "recently started", otherwise "long-standing"
 - `workouts(workout_date, done_time, activity, duration_min, intensity, notes)` —
   workout log powering the Workouts tab
+- `notes(note_date, topic, body, status)` — staged future-work items shown on the
+  Notes tab (`open` / `done` status)
 
 ## Personalization (deliberately omitted here)
 
