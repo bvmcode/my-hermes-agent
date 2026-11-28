@@ -129,6 +129,11 @@ footer a{color:#4ecdc4;text-decoration:none}
 
 <div class="tabpane" id="pane-checklist">
 <div style="color:#58a6ff;font-size:12px;margin-bottom:10px;background:#1f6feb22;border:1px solid #1f6feb;border-radius:6px;padding:6px 10px;display:inline-block">Dependent — any incomplete task moves to the next day until checked off.</div>
+<div class="datebar">
+<button onclick="shiftChk(-1)">‹ prev</button>
+<input type="date" id="chkdate" onchange="loadChecklist()">
+<button onclick="shiftChk(1)">next ›</button>
+</div>
 <div class="cards" id="chkcards"></div>
 <ul class="nlist" id="chklist"></ul></div>
 
@@ -169,19 +174,38 @@ async function loadKanban(){
     ).join('')||`<div class="d" style="color:#8b98a8;font-size:12px">—</div>`)+`</div>`;
   }).join('');
 }
+function etDate(d){
+  return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+}
+function shiftChk(d){
+  const el=document.getElementById('chkdate');
+  const v=new Date(el.value+'T12:00:00');
+  v.setDate(v.getDate()+d);
+  el.value=etDate(v);
+  loadChecklist();
+}
 async function loadChecklist(){
+  if(!document.getElementById('chkdate').value){
+    document.getElementById('chkdate').value=etDate(new Date());
+  }
   const rows=await (await fetch('api/checklist',{cache:'no-store'})).json();
-  const s=await (await fetch('api/checklist-stats',{cache:'no-store'})).json();
+  const sel=document.getElementById('chkdate').value;
+  // dependent view: item is "live on" a date if it existed then and (unchecked then, or checked on/after that date)
+  const live=rows.filter(r=>r.created_date<=sel && (!r.done || (r.done_at||r.created_date).split(' ')[0]>=sel));
+  const open=live.filter(r=>!r.done).length;
+  const doneN=live.filter(r=>r.done).length;
   document.getElementById('chkcards').innerHTML=
-    `<div class="card"><div class="n">${s.total}</div><div class="l">total items</div></div>`
-    +`<div class="card"><div class="n">${s.open}</div><div class="l">open</div></div>`
-    +`<div class="card"><div class="n">${s.done}</div><div class="l">checked off</div></div>`;
-  document.getElementById('chklist').innerHTML=rows.map(r=>
-    `<li class="chk ${r.done?'done':''}"><div class="box" style="cursor:pointer" onclick="toggleChk(${r.id}, ${r.done?'false':'true'})"></div><div>`
+    `<div class="card"><div class="n">${live.length}</div><div class="l">items that day</div></div>`
+    +`<div class="card"><div class="n">${open}</div><div class="l">pending that day</div></div>`
+    +`<div class="card"><div class="n">${doneN}</div><div class="l">done by then</div></div>`;
+  document.getElementById('chklist').innerHTML=live.map(r=>{
+    const doneThen=r.done; // all rows here are unchecked-on-sel or done after sel
+    const carri=(!r.done && r.created_date<sel)?`<span style="color:#58a6ff">carried from ${esc(r.created_date)}</span> · `:'';
+    return `<li class="chk ${r.done?'done':''}"><div class="box" style="cursor:pointer" ${sel===etDate(new Date())?`onclick="toggleChk(${r.id}, ${r.done?'false':'true'})"`:''}></div><div>`
     +`<div class="title">${esc(r.title)}</div>`
     +`${r.note?`<div class="note">${esc(r.note)}</div>`:''}`
-    +`<div class="date">${r.done?`done ${esc((r.done_at||r.created_date).split(' ')[0])}`:`dependent — carried to next day · since ${esc(r.created_date)}`} · [${r.id}]</div>`
-    +`</div></li>`).join('')||'<li style="color:#8b98a8">empty — say "add checklist item: …" in Telegram</li>';
+    +`<div class="date">${carri}${r.done?`done ${esc((r.done_at||r.created_date).split(' ')[0])}`:`pending · since ${esc(r.created_date)}`} · [${r.id}]</div>`
+    +`</div></li>`;}).join('')||`<li style="color:#8b98a8">no checklist activity on ${esc(sel)}</li>`;
 }
 async function toggleChk(id, done){
   const r=await fetch('api/checklist/check',{method:'POST',headers:{'Content-Type':'application/json'},
